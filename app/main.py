@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import analyze, health
+from app.api import analyze, health, streaming
 from app.core.error_handlers import (
     analysis_error_handler,
     http_exception_handler,
@@ -42,11 +42,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# CORS - allow_credentials must be False with wildcard origin (fixes WebSocket 403)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -63,3 +63,4 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 # Routers
 app.include_router(health.router)
 app.include_router(analyze.router)
+app.include_router(streaming.router)

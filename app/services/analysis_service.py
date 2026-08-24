@@ -14,6 +14,7 @@ from app.schemas.analysis import (
 from app.services.age_service import process_age_prediction
 from app.services.audio_service import decode_and_preprocess_audio
 from app.services.gender_service import process_gender_prediction
+from app.services.language_service import detect_language
 from app.services.quality_service import analyze_audio_quality
 
 logger = logging.getLogger(__name__)
@@ -59,19 +60,31 @@ async def analyze_audio_request(contact_id: str, audio_bytes: bytes) -> AnalyzeR
         gender_res = process_gender_prediction(gender_probs)
         age_res = process_age_prediction(raw_age_scalar)
 
+    # 6. Language detection (best-effort, never blocks core flow)
+    try:
+        language_res = detect_language(
+            signal, sample_rate, quality_result.classification
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Language detection failed for {formatted_contact_id}: {e}")
+        from app.schemas.analysis import LanguageResult
+
+        language_res = LanguageResult(code="unknown", confidence=0.0)
+
     elapsed_ms = (time.perf_counter() - start_time) * 1000.0
 
     # Structured logging line (no raw audio logged)
     logger.info(
         f"Request Processed | contact_id={formatted_contact_id} | "
         f"quality={quality_result.classification} | gender={gender_res.value} ({gender_res.confidence}) | "
-        f"age={age_res.bracket} ({age_res.confidence}) | time_ms={elapsed_ms:.2f}ms"
+        f"age={age_res.bracket} ({age_res.confidence}) | language={language_res.code} ({language_res.confidence}) | time_ms={elapsed_ms:.2f}ms"
     )
 
     return AnalyzeResponse(
         contact_id=formatted_contact_id,
         gender=gender_res,
         age=age_res,
+        language=language_res,
         quality=quality_result,
         processing_time_ms=round(elapsed_ms, 2),
     )

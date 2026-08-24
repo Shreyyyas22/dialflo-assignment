@@ -1,0 +1,7 @@
+file,gender,age,language
+female_adult.mp3,female,31-45,en
+female_young_adult.mp3,female,18-30,en
+male_adult.wav,male,31-45,en
+male_senior.wav,male,60+,en
+real_speech.mp3,male,31-45,en
+real_speech.wav,male,31-45,en

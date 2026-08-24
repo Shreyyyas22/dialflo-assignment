@@ -17,6 +17,14 @@ class AgeResult(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
 
 
+class LanguageResult(BaseModel):
+    code: str = Field(
+        default="en",
+        description="Best-effort ISO language code or 'unknown' (e.g. 'en', 'es', 'unknown')",
+    )
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+
 class QualityMetrics(BaseModel):
     duration_seconds: float = Field(..., ge=0.0)
     rms: float = Field(..., ge=0.0)
@@ -35,8 +43,20 @@ class AnalyzeResponse(BaseModel):
     contact_id: str
     gender: GenderResult
     age: AgeResult
+    language: LanguageResult = Field(
+        default_factory=lambda: LanguageResult(code="unknown", confidence=0.0)
+    )
     quality: QualityResult
     processing_time_ms: float = Field(..., ge=0.0)
+
+
+class StreamPredictionMessage(BaseModel):
+    event: Literal["prediction_update", "stream_completed", "error"]
+    accumulated_duration_seconds: float = Field(..., ge=0.0)
+    gender: GenderResult
+    age: AgeResult
+    language: LanguageResult
+    quality_classification: QualityClassification
 
 
 class ErrorDetail(BaseModel):

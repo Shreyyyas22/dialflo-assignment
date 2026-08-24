@@ -11,6 +11,9 @@ A production-ready Dockerized FastAPI microservice that ingests short caller aud
 - **Single Model Multi-Task Architecture**: Uses a single pretrained Wav2Vec2 model with joint regression/classification heads for optimal memory efficiency.
 - **Strict Privacy & Zero-Persistence**: Audio payloads are processed strictly in-memory and cleaned up immediately. Raw audio is never saved to disk or written to log files.
 - **Dockerized & Self-Contained**: Multi-stage Docker setup with pre-baked model weights for instant container startup without runtime network dependencies.
+- **Language Detection (Best-Effort)**: Adds `language: {"code": "en", "confidence": 0.95}` to every response via heuristic (opt-in Whisper tiny).
+- **Real-time Streaming**: WebSocket endpoint `/ws/analyze` emits progressive `gender`, `age`, `quality`, `language` as audio chunks arrive.
+- **Evaluation Harness**: `scripts/evaluate.py` computes accuracy + ECE calibration against labeled datasets (Common Voice etc.).
 - **Fully Configurable**: All threshold parameters, max audio sizes, and timeouts are configurable via environment variables (`pydantic-settings`).
 
 ---
@@ -102,6 +105,32 @@ Measure latency against a 5-second audio payload (N=10 requests):
 python scripts/benchmark.py http://localhost:8000 10
 ```
 
+### Running Evaluation Harness (Bonus #3)
+Evaluate accuracy + confidence calibration on a labeled dataset:
+```bash
+# Demo with heuristic labels from filename (sample_audio/labels.csv provided)
+python scripts/evaluate.py --data-dir sample_audio --labels sample_audio/labels.csv
+
+# Common Voice example (auto-detects validated.tsv / train.tsv)
+python scripts/evaluate.py --data-dir /path/to/cv-corpus --limit 100
+
+# Save detailed JSON report
+python scripts/evaluate.py --data-dir sample_audio --output results.json
+```
+
+### WebSocket Streaming Demo (Bonus #1)
+```bash
+# Install extra client dep
+pip install websockets
+
+# Stream a file in ~500ms chunks
+python scripts/streaming_client.py sample_audio/real_speech.wav --url ws://localhost:8000
+
+# Manual with websocat / wscat:
+websocat "ws://localhost:8000/ws/analyze?contact_id=123e4567-e89b-12d3-a456-426614174000"
+# then send binary chunks + {"event":"end"}
+```
+
 ---
 
 ## 📡 API Endpoints
@@ -150,6 +179,10 @@ Analyzes uploaded audio file for caller quality, gender, and age.
       "bracket": "31-45",
       "confidence": 0.814
     },
+    "language": {
+      "code": "en",
+      "confidence": 0.92
+    },
     "quality": {
       "classification": "good",
       "metrics": {
@@ -174,6 +207,23 @@ Analyzes uploaded audio file for caller quality, gender, and age.
     }
   }
   ```
+
+### 4. `WebSocket /ws/analyze` (Bonus #1 — Streaming)
+Real-time streaming endpoint. Connect with a valid `contact_id`, then send binary audio chunks.
+
+- **Connect**: `ws://localhost:8000/ws/analyze?contact_id=<uuid>` (or send `{"contact_id":"<uuid>"}` as first text frame)
+- **Client → Server**:
+  - Binary frame: raw audio bytes (any FFmpeg-decodable format fragment)
+  - Text frame: `{"event":"chunk","audio_base64":"<b64>"}` (alternative)
+  - Text frame: `{"event":"end"}` to finalize
+- **Server → Client** (JSON frames):
+  ```json
+  {"event": "stream_started", "contact_id": "..."}
+  {"event": "prediction_update", "accumulated_duration_seconds": 1.2, "gender": {"value":"female","confidence":0.91}, "age": {"bracket":"18-30","confidence":0.84}, "language": {"code":"en","confidence":0.75}, "quality_classification": "good"}
+  {"event": "stream_completed", "accumulated_duration_seconds": 4.5, "gender": {...}, "age": {...}, "language": {...}, "quality_classification": "good"}
+  {"event": "error", "message": "...", "code": "INVALID_AUDIO"}
+  ```
+- **Example client**: `python scripts/streaming_client.py sample_audio/real_speech.wav`
 
 ---
 
@@ -207,3 +257,8 @@ All settings can be customized via `.env` or environment variables:
 | `MAX_CLIPPING_RATIO` | `0.05` | Max allowed clipping ratio before `degraded` |
 | `MAX_SILENCE_RATIO` | `0.70` | Max allowed silence ratio before `insufficient` |
 | `MIN_ESTIMATED_SNR` | `5.0` | Minimum SNR in dB before `degraded` |
+| `LANGUAGE_DETECTION_ENABLED` | `true` | Enable best-effort language field |
+| `LANGUAGE_USE_WHISPER` | `false` | Opt-in heavy Whisper tiny language detection (adds ~2s latency) |
+| `LANGUAGE_FALLBACK_CODE` | `en` | Fallback ISO code for heuristic path |
+| `WS_CHUNK_GROWTH_BYTES` | `8000` | Min new bytes before re-running streaming inference |
+| `WS_MAX_ACCUMULATED_MB` | `10.0` | Max accumulated buffer for streaming (guard) |

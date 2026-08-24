@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     MAX_SILENCE_RATIO: float = 0.70
     MIN_ESTIMATED_SNR: float = 5.0
     FFMPEG_TIMEOUT_SECONDS: float = 10.0
+    LANGUAGE_DETECTION_ENABLED: bool = True
+    LANGUAGE_USE_WHISPER: bool = False
+    LANGUAGE_FALLBACK_CODE: str = "en"
+    WS_MAX_ACCUMULATED_MB: float = 10.0
+    WS_CHUNK_GROWTH_BYTES: int = 8000
 
 
 settings = Settings()

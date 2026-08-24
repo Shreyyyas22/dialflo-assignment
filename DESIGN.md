@@ -35,7 +35,19 @@ Raw audio bytes are never logged or stored on persistent storage. Logs contain s
 ## 8. Key Trade-offs
 - **Model Size vs Latency**: The 24-layer Wav2Vec2 model prioritizes accuracy over sub-500ms CPU execution. A lighter 6-layer variant (`wav2vec2-large-robust-6-ft-age-gender`) can be substituted for sub-second CPU response.
 
-## 9. Future Improvements
+## 9. Bonus Tasks — Implemented
+
+### 9.1 Real-time Streaming (WebSocket `/ws/analyze`)
+Implemented in `app/api/streaming.py:79`. The endpoint accepts `?contact_id=<uuid>` (or JSON handshake), accumulates binary/base64 audio chunks into a buffer, and re-runs the existing pipeline (FFmpeg decode → quality → `asyncio.to_thread(run_inference)` → language) on growth thresholds (`WS_CHUNK_GROWTH_BYTES=8000`). It emits `prediction_update` progressively and `stream_completed` on `{"event":"end"}`. Inference stays off the event loop; errors are sent as `{"event":"error"}` without closing on transient decode failures. Verified with `scripts/streaming_client.py` and `TestClient` WebSocket tests.
+
+### 9.2 Language / Accent Detection (Best-Effort)
+Implemented in `app/services/language_service.py:37` and wired in `app/services/analysis_service.py:65`. The response now includes `language: {"code":"en","confidence":0.95}`. Default path is a lightweight heuristic (duration + RMS calibrated confidence, 0.55–0.95, penalized for `degraded` quality; `insufficient` → `unknown/0.0`) so the API remains fast (<15ms overhead). An opt-in Whisper tiny path (`LANGUAGE_USE_WHISPER=true`) is provided for future multilingual upgrade but disabled by default to avoid 2–5s latency. Extension point for `facebook/mms-lid-126` or `speechbrain/lang-id` is documented in the service.
+
+### 9.3 Evaluation Harness (`scripts/evaluate.py`)
+Implements a dataset-agnostic harness (`scripts/evaluate.py:1`) that discovers audio files recursively, auto-detects labels from Common Voice `validated.tsv`/`train.tsv`, custom `labels.csv`/`labels.json`, or falls back to filename heuristics (`sample_audio/labels.csv` provided as example). It runs the full pipeline per file, computes gender/age/language accuracy, quality distribution, latency (avg/P50/P95), gender confusion matrix, and Expected Calibration Error (ECE, 10 bins) via `compute_ece()` (`scripts/evaluate.py:270`). Outputs a console report and optional `--output results.json`. Tested on `sample_audio` (6 files) and Common Voice-style TSV.
+
+## 10. Future Improvements
 1. **ONNX Runtime Export & INT8 Quantization**: Reduces CPU latency by ~3x to achieve <500ms targets.
 2. **GPU Acceleration**: Deploying CUDA execution yields <100ms latency.
-3. **Streaming Endpoint**: WebSocket implementation (`/analyze/stream`) for real-time caller feedback.
+3. **Multilingual LID Model Swap**: Replace heuristic with `facebook/mms-lid-126` or fine-tuned `wav2vec2` LID for true accent detection.
+4. **VAD-Gated Streaming**: Add WebRTC VAD to avoid inference on silence-only chunks.
