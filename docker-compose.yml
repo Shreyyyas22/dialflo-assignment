@@ -1,0 +1,22 @@
+services:
+  voice-analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: voice-analyzer-service
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MODEL_NAME=audeering/wav2vec2-large-robust-24-ft-age-gender
+      - MAX_AUDIO_SIZE_MB=10.0
+      - MIN_AUDIO_DURATION_SECONDS=0.5
+      - MAX_AUDIO_DURATION_SECONDS=30.0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
